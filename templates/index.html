@@ -17,6 +17,30 @@
         }
         h1 {
             margin-bottom: 10px;
+            font-size: 28px;
+            color: #333;
+        }
+        .controls {
+            margin-bottom: 20px;
+        }
+        #btn-start {
+            background: #3498db;
+            color: #fff;
+            border: none;
+            padding: 12px 24px;
+            font-size: 18px;
+            border-radius: 6px;
+            cursor: pointer;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            transition: background 0.3s;
+        }
+        #btn-start:hover {
+            background: #2980b9;
+        }
+        .game-wrapper {
+            display: flex;
+            gap: 20px;
+            align-items: flex-start;
         }
         #board {
             display: grid;
@@ -48,23 +72,71 @@
         .player5 { color: #9b59b6; }
         .player6 { color: #1abc9c; }
         .player7 { color: #e67e22; }
+        /* Scoreboard */
+        #scoreboard {
+            width: 200px;
+            background: #fff;
+            padding: 16px;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+        #scoreboard h2 {
+            margin-top: 0;
+            font-size: 20px;
+            text-align: center;
+            color: #333;
+        }
+        #scores-list {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+        }
+        #scores-list li {
+            background: #f9f9f9;
+            margin: 8px 0;
+            padding: 8px 12px;
+            border-radius: 4px;
+            font-size: 16px;
+            display: flex;
+            justify-content: space-between;
+        }
     </style>
 </head>
 <body>
     <h1>Programmierungswettbewerb: Sterne sammeln</h1>
-    <div id="board"></div>
+    <div class="controls">
+        <button id="btn-start">Start</button>
+    </div>
+
+    <div class="game-wrapper">
+        <div id="board"></div>
+        <div id="scoreboard">
+            <h2>Scores</h2>
+            <ul id="scores-list"></ul>
+        </div>
+    </div>
 
     <script>
-        // Ausgangsdaten aus Flask-Template (Jinja2)
-        let players = {{ players | tojson }};   // z.B. [[4,1],[3,8],...]
-        let loot    = {{ loot | tojson }};      // z.B. [[5,5],[10,12],...]
-        let loop    = 0;
-
-        const rows = 20;
-        const cols = 30;
+        let players = [], loot = [], scores = [], loop = 0;
+        let gameInterval = null;
+        const rows = 20, cols = 30;
         const boardEl = document.getElementById('board');
 
-        // Spielfeld initialisieren
+        document.getElementById('btn-start').addEventListener('click', async () => {
+            const resp = await fetch('/start/7');
+            const data = await resp.json();
+            players = data.players;
+            loot    = data.loot;
+            scores  = data.scores;
+            loop    = 0;
+
+            initBoard();
+            draw();
+
+            if (gameInterval) clearInterval(gameInterval);
+            gameInterval = setInterval(nextMove, 1000);
+        });
+
         function initBoard() {
             boardEl.innerHTML = '';
             for (let r = 0; r < rows; r++) {
@@ -77,49 +149,56 @@
             }
         }
 
-        // Aktuelle Positionen auf das Feld zeichnen
         function draw() {
-            // Leeren aller Zellen
-            document.querySelectorAll('.cell').forEach(cell => cell.textContent = '');
+            document.querySelectorAll('.cell').forEach(cell => {
+                cell.textContent = '';
+                cell.classList.remove('loot');
+                for (let i = 1; i <= 7; i++) cell.classList.remove(`player${i}`);
+            });
 
-            // Sterne zeichnen
-            loot.forEach(([r,c]) => {
+            loot.forEach(([r, c]) => {
                 const cell = document.getElementById(`cell-${r}-${c}`);
                 cell.textContent = '★';
                 cell.classList.add('loot');
             });
 
-            // Spieler zeichnen
-            players.forEach(([r,c], idx) => {
+            players.forEach(([r, c], idx) => {
                 const num = idx + 1;
                 const cell = document.getElementById(`cell-${r}-${c}`);
                 cell.textContent = num;
                 cell.classList.add(`player${num}`);
             });
+
+            updateScores();
         }
 
-        // Server-Anfrage für neuen Zug
+        function updateScores() {
+            const ul = document.getElementById('scores-list');
+            ul.innerHTML = '';
+            scores.forEach((sc, idx) => {
+                const li = document.createElement('li');
+                li.textContent = `Spieler ${idx+1}`;
+                const span = document.createElement('span');
+                span.textContent = sc;
+                li.appendChild(span);
+                ul.appendChild(li);
+            });
+        }
+
         async function nextMove() {
-            const payload = { player: players, loot: loot, loop: loop };
             try {
                 const resp = await fetch('/move', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(payload)
+                    body: JSON.stringify({ player: players, loot: loot, loop: loop })
                 });
                 const data = await resp.json();
-                // Neue Spielerkoordinaten übernehmen
                 players = data.coord;
+                scores  = data.scores;
                 loop++;
-
-                // Gesammelte Sterne entfernen
-                loot = loot.filter(([lr,lc]) => {
-                    return !players.some(([pr,pc]) => pr === lr && pc === lc);
-                });
-
+                loot = loot.filter(([lr, lc]) => !players.some(([pr, pc]) => pr === lr && pc === lc));
                 draw();
 
-                // Prüfen, ob alle Sterne gesammelt sind
                 if (loot.length === 0) {
                     clearInterval(gameInterval);
                     showWinner();
@@ -129,20 +208,13 @@
             }
         }
 
-        // Gewinner ermitteln und Animation zeigen
         function showWinner() {
-            // Zähle gesammelte Sterne pro Spieler
-            const counts = Array(7).fill(0);
-            // loopweise könnte man Server mitliefern lassen, hier bitte anpassen
-            alert('Spiel beendet! Gewinner wird ermittelt.');
-            // (Hier können Sie eine lustige Animation implementieren.)
+            const maxScore = Math.max(...scores);
+            const winners = scores
+                .map((s, i) => s === maxScore ? i + 1 : null)
+                .filter(i => i !== null);
+            alert(`Gewinner: Spieler ${winners.join(', ')} mit ${maxScore} Sternen!`);
         }
-
-        // Initialisierung
-        initBoard();
-        draw();
-        // Spiel-Loop: alle 1000ms ein Zug
-        const gameInterval = setInterval(nextMove, 1000);
     </script>
 </body>
 </html>
