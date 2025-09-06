@@ -1,9 +1,26 @@
-def move6(players, loot):
+def move6(players, stars):
     """
-    Spieler 6 bleibt stehen und gibt seine aktuellen Koordinaten zurück.
-    :param players: Liste der aktuellen Spielerkoordinaten [(r, c), ...]
-    :param loot: Liste der Loot-Koordinaten (wird hier nicht verwendet)
-    :return: Tuple (r, c) mit der neuen Position (gleich altem Wert)
+    players: list of (r, c) current positions for all 6 players
+    stars: list of (r, c) star positions
+    return: (r, c) new position for player 6 (max 1 orthogonal step or stay)
     """
-    # players[5] entspricht den Koordinaten von Spieler6
-    return tuple(players[5])
+
+    r, c = players[5]
+
+    closest_star = None
+    closest_mandist = 10000
+    for star in stars:
+        sr, sc = star
+        d = abs(sc-c)+abs(sr-r)
+        if d<closest_mandist:
+            closest_mandist = d
+            closest_star = star
+    sr, sc = closest_star
+    if c<sc:
+        return (r, c+1)
+    elif c>sc:
+        return (r, c-1)
+    elif r<sr:
+        return (r+1, c)
+    else:
+        return (r-1, c)
